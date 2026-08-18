@@ -9,20 +9,20 @@ Docs for the tool itself: <https://archive.org/developers/internetarchive/>
 The container is a one-shot CLI, not a daemon. Arguments go straight to `ia`:
 
 ```bash
-docker run --rm -v "$PWD/downloads:/data" ghcr.io/jeppestaerk/internetarchive download nasa
+docker run --rm -v "$PWD/downloads:/data" ghcr.io/jeppestaerk/internetarchive-docker download nasa
 ```
 
 ## Quick start
 
 ```bash
 # Public data needs no credentials at all
-docker run --rm ghcr.io/jeppestaerk/internetarchive metadata nasa
+docker run --rm ghcr.io/jeppestaerk/internetarchive-docker metadata nasa
 
 # Download into the current directory, owned by you (not root)
 docker run --rm \
   -e PUID="$(id -u)" -e PGID="$(id -g)" \
   -v "$PWD:/data" \
-  ghcr.io/jeppestaerk/internetarchive download nasa --glob='*.jpg'
+  ghcr.io/jeppestaerk/internetarchive-docker download nasa --glob='*.jpg'
 ```
 
 With Docker Compose (downloads land in `./downloads`):
@@ -36,9 +36,6 @@ docker compose run --rm ia search 'collection:nasa' --itemlist
 
 Use `docker compose run`, not `docker compose up` — there is no long-running process.
 
-Until the image is published to GHCR, Compose logs a harmless `error from registry:
-denied` while trying to pull, then falls back to building locally.
-
 ## Credentials
 
 Three options, resolved by the library itself in this order:
@@ -48,7 +45,7 @@ Three options, resolved by the library itself in this order:
 ```bash
 docker run --rm \
   -e IA_ACCESS_KEY_ID=xxx -e IA_SECRET_ACCESS_KEY=yyy \
-  ghcr.io/jeppestaerk/internetarchive tasks
+  ghcr.io/jeppestaerk/internetarchive-docker tasks
 ```
 
 Set **both or neither**; setting only one raises a `ValueError` by design.
@@ -79,7 +76,7 @@ With plain `docker run` you must pass `-it`, or the password prompt has no termi
 read from:
 
 ```bash
-docker run --rm -it -v ia-config:/config ghcr.io/jeppestaerk/internetarchive configure
+docker run --rm -it -v ia-config:/config ghcr.io/jeppestaerk/internetarchive-docker configure
 ```
 
 Non-interactively, for scripts:
@@ -191,7 +188,7 @@ docker build --build-arg IA_VERSION=5.10.0 -t internetarchive .
 The entrypoint always execs `ia`, so to get a shell inside the image:
 
 ```bash
-docker run --rm -it --entrypoint sh ghcr.io/jeppestaerk/internetarchive
+docker run --rm -it --entrypoint sh ghcr.io/jeppestaerk/internetarchive-docker
 ```
 
 ## License
