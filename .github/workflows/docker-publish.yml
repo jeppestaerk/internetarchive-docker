@@ -11,12 +11,103 @@ on:
       - main
   workflow_dispatch:
 
+# Actions are pinned to commit SHAs rather than tags: a tag can be moved to
+# point at different code, a SHA cannot. Renovate updates them via the trailing
+# version comments.
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+permissions:
+  contents: read
+
 jobs:
+  verify:
+    name: Smoke test and vulnerability scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      # Single-arch so the result can be loaded into the local daemon and
+      # actually executed. The multi-arch build reuses this cache.
+      - name: Build amd64 image for testing
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: internetarchive:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: |
+          docker run --rm internetarchive:ci --version
+          docker run --rm internetarchive:ci metadata nasa > /dev/null
+
+      # Asserts the hardening documented in the README actually holds, so a
+      # future change to the entrypoint cannot quietly start needing root.
+      - name: Verify it runs hardened and drops to a non-root user
+        run: |
+          docker volume create ia-ci-config
+          docker volume create ia-ci-data
+
+          docker run --rm \
+            --cap-drop ALL \
+            --cap-add CHOWN --cap-add SETUID --cap-add SETGID \
+            --security-opt no-new-privileges \
+            --read-only --tmpfs /tmp \
+            -e PUID=4242 -e PGID=4242 \
+            -v ia-ci-config:/config -v ia-ci-data:/data \
+            internetarchive:ci download nasa nasa_meta.xml
+
+          owner=$(docker run --rm -v ia-ci-data:/data --entrypoint stat \
+            internetarchive:ci -c '%u:%g' /data/nasa/nasa_meta.xml)
+          echo "downloaded file owner: $owner"
+          if [ "$owner" != "4242:4242" ]; then
+            echo "::error::expected 4242:4242, got $owner - privilege drop or chown regressed"
+            exit 1
+          fi
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: internetarchive:ci
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          # Unfixed CVEs in the base image cannot be actioned here; Renovate
+          # bumps the base image as fixes land upstream.
+          ignore-unfixed: true
+
+      - name: Scan again for the Security tab
+        if: always() && github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: internetarchive:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+
+      - name: Upload SARIF
+        if: always() && github.event_name != 'pull_request' && hashFiles('trivy-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          sarif_file: trivy-results.sarif
+
   build-and-push:
+    name: Build and push multi-arch image
+    needs: verify
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,16 +117,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -43,12 +134,11 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
@@ -56,22 +146,14 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
-        id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
           sbom: true
-
-      - name: Smoke test the built image
-        if: github.event_name == 'pull_request'
-        run: |
-          docker build -t ia-smoke:pr .
-          docker run --rm ia-smoke:pr --version
-          docker run --rm ia-smoke:pr metadata nasa > /dev/null

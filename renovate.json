@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
   ],
   "timezone": "UTC",
   "schedule": [
@@ -19,7 +20,7 @@
         "/^Dockerfile$/"
       ],
       "matchStrings": [
-        "ARG BASE_VERSION=(?<currentValue>.*?)\\n"
+        "ARG BASE_VERSION=(?<currentValue>.*?)\\nARG BASE_DIGEST=(?<currentDigest>sha256:[a-f0-9]+)\\n"
       ],
       "depNameTemplate": "python",
       "datasourceTemplate": "docker",
@@ -56,6 +57,33 @@
         "internetarchive"
       ],
       "groupName": "internetarchive"
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Security updates should not wait for the weekly window",
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "schedule": [
+        "at any time"
+      ]
     }
-  ]
+  ],
+  "vulnerabilityAlerts": {
+    "labels": [
+      "security"
+    ],
+    "schedule": [
+      "at any time"
+    ]
+  },
+  "osvVulnerabilityAlerts": true
 }

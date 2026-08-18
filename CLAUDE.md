@@ -18,21 +18,54 @@ command and exits.
 - **entrypoint.sh**: the only logic in the repo. Handles file ownership, then `exec`s `ia`.
 - **docker-compose.yaml**: a single `ia` service intended for `docker compose run --rm ia <args>`.
 - **renovate.json**: custom regex managers for the two `ARG` versions in the Dockerfile.
-- **.github/workflows/docker-publish.yml**: multi-arch (amd64/arm64) build, pushes to GHCR, smoke-tests on PRs.
+- **.github/workflows/docker-publish.yml**: two jobs. `verify` builds amd64 with `load: true` (multi-arch images cannot be loaded into the daemon), smoke-tests it, asserts the hardened run still drops privileges, then gates on a Trivy scan. `build-and-push` needs `verify` and does the multi-arch push to GHCR.
 - **.github/workflows/cleanup-ghcr.yml**: weekly prune of untagged GHCR versions.
+
+Actions are pinned to commit SHAs with a trailing `# vX.Y.Z` comment. Renovate reads
+that comment to offer updates. Keep the comment accurate if you ever repin by hand.
 
 ## Key Components
 
 ### Privilege dropping and file ownership
 
-`entrypoint.sh` exists to stop downloads landing as root-owned files on the host. As
-root it ensures a `PUID:PGID` user exists, chowns `/config` and `/data`, then
-`exec su-exec`s down to that user. The chown is deliberately **non-recursive** — a
-recursive chown would crawl the entire download mount, and files written by `ia` get
-the right owner anyway.
+`entrypoint.sh` exists to stop downloads landing as root-owned files on the host. This
+is the linuxserver.io PUID/PGID convention: as root it chowns `/config` and `/data`,
+then `exec su-exec`s down to `PUID:PGID`. `ia` itself never runs as root. The chown is
+deliberately **non-recursive** — a recursive chown would crawl the entire download
+mount, and files written by `ia` get the right owner anyway.
 
 When started with `docker run --user`, `id -u` is non-zero, the whole block is skipped,
 and the entrypoint execs `ia` directly.
+
+**Do not reintroduce `addgroup`/`adduser`.** An earlier version created a passwd/group
+entry for `PUID:PGID` before dropping. It is unnecessary — `su-exec` takes numeric ids
+directly — and it writes to `/etc/passwd`, which makes the container fail immediately
+under `read_only: true` with `adduser: /etc/passwd: Read-only file system`.
+
+### Hardening and the capability set
+
+The Compose service runs with `cap_drop: [ALL]` plus exactly `CHOWN`, `SETUID`,
+`SETGID`, `no-new-privileges:true`, `read_only: true` and a `/tmp` tmpfs.
+
+That capability list was derived by testing, not guessed. With no `cap_add` the
+container dies at `su-exec: setgroups(...): Operation not permitted`. `CHOWN` covers the
+ownership fix; `SETUID`/`SETGID` cover the `su-exec` drop. If the entrypoint ever needs
+another capability, that is a signal to question the change, not to widen the list. The
+`verify` CI job asserts the full hardened combination still produces a file owned by
+`4242:4242`, so a regression fails the build.
+
+Note that `--user` and `PUID`/`PGID` need different capabilities: with `--user` the root
+branch never runs, so zero capabilities are required.
+
+### No installer toolchain in the runtime image
+
+The Dockerfile removes `pip`, `setuptools`, `wheel`, `pkg_resources` and `ensurepip`
+after installing `ia`. Two reasons: nothing installs packages at runtime, and those were
+the only components Trivy flagged (pip vendors a vulnerable `msgpack`, and `setuptools`
+70.3.0 carries CVE-2025-47273). With them gone the image scans clean at all severities.
+
+Consequence: you cannot `pip install` inside this image. To add a Python dependency, add
+it to the `pip install` line in the Dockerfile and rebuild.
 
 ### Why the Dockerfile chowns /config and /data at build time
 

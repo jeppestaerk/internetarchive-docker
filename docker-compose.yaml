@@ -21,6 +21,23 @@ services:
       - ./downloads:/data
       - ia-config:/config
 
+    # Hardening. The container starts as root only to chown /config and /data,
+    # then su-execs down to PUID:PGID, so these three capabilities are the
+    # complete set it needs - verified by running with each one removed.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN    # chown /config and /data to PUID:PGID
+      - SETUID   # su-exec setuid
+      - SETGID   # su-exec setgroups/setgid
+    security_opt:
+      - no-new-privileges:true
+    # Nothing is written outside the two mounts. /tmp is tmpfs for anything
+    # transient; PYTHONDONTWRITEBYTECODE keeps Python from writing .pyc files.
+    read_only: true
+    tmpfs:
+      - /tmp
+
 volumes:
   ia-config:
     driver: local

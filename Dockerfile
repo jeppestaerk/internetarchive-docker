@@ -1,10 +1,14 @@
 ARG BASE_IMAGE=python
 ARG BASE_VERSION=3.14.7-alpine3.24
+ARG BASE_DIGEST=sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc
 
-FROM ${BASE_IMAGE}:${BASE_VERSION}
+# Pinned by digest as well as tag, so a rebuild cannot silently pick up a
+# different base image. Renovate keeps the pair in sync.
+FROM ${BASE_IMAGE}:${BASE_VERSION}@${BASE_DIGEST}
 
-# Redeclare so the value is visible after FROM (for the OCI label below)
+# Redeclare so the values are visible after FROM (for the OCI labels below)
 ARG BASE_VERSION
+ARG BASE_DIGEST
 
 ARG IA_VERSION=5.11.0
 
@@ -16,14 +20,27 @@ RUN apk add --no-cache \
 
 # Install the internetarchive CLI. All runtime deps (requests, urllib3, tqdm,
 # jsonpatch) are pure Python, so no build toolchain is needed on any arch.
+#
+# Then remove the installer toolchain. `ia` is already installed and nothing in
+# the container installs packages at runtime, so pip (with its vendored
+# msgpack), setuptools and the ensurepip wheels are pure attack surface - and
+# they are the only things the base image gets flagged for.
 RUN pip install --no-cache-dir "internetarchive==${IA_VERSION}" && \
-    rm -rf /root/.cache
+    python -m pip uninstall -y pip setuptools wheel 2>/dev/null || true; \
+    rm -rf /root/.cache \
+           /usr/local/lib/python*/site-packages/pip* \
+           /usr/local/lib/python*/site-packages/setuptools* \
+           /usr/local/lib/python*/site-packages/pkg_resources \
+           /usr/local/lib/python*/site-packages/wheel* \
+           /usr/local/lib/python*/ensurepip \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.*
 
 # /config holds ia.ini (written by `ia configure`), /data is the download target
 ENV IA_CONFIG_FILE=/config/ia.ini \
     HOME=/config \
     PUID=1000 \
-    PGID=1000
+    PGID=1000 \
+    PYTHONDONTWRITEBYTECODE=1
 
 # Own these as the default PUID/PGID at build time. Docker seeds an empty named
 # volume with the image directory's ownership, so this is what makes
@@ -40,6 +57,9 @@ RUN chmod +x /entrypoint.sh
 
 # Arguments are passed straight through to `ia`, e.g.
 #   docker run --rm -v "$PWD:/data" IMAGE download nasa
+#
+# The entrypoint starts as root purely to chown /config and /data, then drops to
+# PUID:PGID via su-exec. `ia` itself never runs as root. See README "Security".
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["--help"]
 
@@ -54,4 +74,5 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.vendor="Jeppe Stærk"
 LABEL org.opencontainers.image.version="${IA_VERSION}"
 LABEL org.opencontainers.image.base.name="docker.io/library/python:${BASE_VERSION}"
+LABEL org.opencontainers.image.base.digest="${BASE_DIGEST}"
 LABEL maintainer="Jeppe Stærk"
