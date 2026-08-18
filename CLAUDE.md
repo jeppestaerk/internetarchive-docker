@@ -58,6 +58,23 @@ are falsy there, so the `${VAR:-}` defaults in docker-compose.yaml safely fall t
 to the config file. Do not add entrypoint logic to synthesize an `ia.ini` from the env
 vars — the library reads them natively.
 
+### CLI login vs. env vars
+
+`ia configure` logs in with an archive.org email and password and writes both the `[s3]`
+keys and the `[cookies]` `logged-in-user` / `logged-in-sig` session cookies to
+`$IA_CONFIG_FILE`. The env vars only ever supply S3 keys, so they cannot cover anything
+that needs a logged-in session. When a user reports that an operation works in a browser
+but not in the container, check whether they configured via env vars and therefore have
+no cookies.
+
+Relevant flags, all verified present in 5.11.0: `-u/--username`, `-p/--password`,
+`-n/--netrc`, `-s/--show`, `-C/--check`, `-w/--whoami`, `-c/--print-cookies`,
+`-a/--print-auth-header`.
+
+Interactive `ia configure` needs a TTY. `docker compose run` allocates one by default;
+plain `docker run` needs an explicit `-it` or the password prompt dies on EOF with a
+traceback. Upstream docs: <https://archive.org/developers/internetarchive/configuration.html>
+
 ### Why alpine works without a build toolchain
 
 The runtime dependencies (`requests`, `urllib3`, `tqdm`, `jsonpatch`) are pure Python,

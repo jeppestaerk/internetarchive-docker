@@ -53,16 +53,86 @@ docker run --rm \
 
 Set **both or neither**; setting only one raises a `ValueError` by design.
 
-**2. A persisted config file** — `IA_CONFIG_FILE` is preset to `/config/ia.ini`, so
-`ia configure` writes into whatever you mount at `/config`. With Compose that is the
-`ia-config` named volume, so you configure once:
+**2. Log in with the CLI** — see [Configuring](https://archive.org/developers/internetarchive/configuration.html).
+This is usually the better option: you log in with your normal archive.org email and
+password, and `ia` fetches your S3 keys *and* your `logged-in-*` session cookies. The
+env vars above only ever give you S3 keys, so anything that needs a logged-in session
+rather than S3 auth works with this route and not with those.
+
+`IA_CONFIG_FILE` is preset to `/config/ia.ini`, so the login is written to whatever you
+mount at `/config`. With Compose that is the `ia-config` named volume — configure once
+and every later `run` picks it up:
 
 ```bash
 docker compose run --rm ia configure
 ```
 
+```
+Enter your Archive.org credentials below to configure 'ia'.
+
+Email address: you@example.com
+Password:
+Config saved to: /config/ia.ini
+```
+
+With plain `docker run` you must pass `-it`, or the password prompt has no terminal to
+read from:
+
+```bash
+docker run --rm -it -v ia-config:/config ghcr.io/jeppestaerk/internetarchive configure
+```
+
+Non-interactively, for scripts:
+
+```bash
+docker compose run --rm ia configure -u you@example.com -p 'your-password'
+```
+
+Careful: a password given as `-p` lands in your shell history and in `ps` output on the
+host. Prefer the interactive prompt, or the env vars, for anything long-lived.
+
+There is also `--netrc`/`-n` to log in from a `netrc` file, if you mount one.
+
 **3. Nothing** — anonymous access still covers `download`, `metadata`, `list` and
 `search` on public items. Only uploads, deletes, tasks and restricted items need keys.
+
+### Inspecting and testing a login
+
+All of these read the config at `/config/ia.ini`:
+
+```bash
+docker compose run --rm ia configure --show               # dump config as JSON, secrets redacted
+docker compose run --rm ia configure --check              # validate S3 keys; exit 0 if valid
+docker compose run --rm ia configure --whoami             # account info for the current keys
+docker compose run --rm ia configure --print-cookies      # the logged-in-* cookies
+docker compose run --rm ia configure --print-auth-header  # an Authorization header
+```
+
+```console
+$ docker compose run --rm ia configure --show
+{"s3": {"access": "testkey", "secret": "REDACTED"}, "general": {"screenname": "tester"}}
+```
+
+Re-running `ia configure` updates the credentials and leaves any options you added by
+hand in place.
+
+### Config file format
+
+`/config/ia.ini` is plain INI, so you can also write it yourself instead of logging in:
+
+```ini
+[s3]
+access = your-access-key
+secret = your-secret-key
+
+[cookies]
+logged-in-user = you%40example.com
+logged-in-sig = ...
+
+[general]
+screenname = you
+user_agent_suffix = my-app
+```
 
 ## File ownership
 
