@@ -1,0 +1,61 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "timezone": "UTC",
+  "schedule": [
+    "before 4am on Monday"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "automerge": true,
+  "platformAutomerge": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "ARG BASE_VERSION=(?<currentValue>.*?)\\n"
+      ],
+      "depNameTemplate": "python",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "ARG IA_VERSION=(?<currentValue>.*?)\\n"
+      ],
+      "depNameTemplate": "internetarchive",
+      "datasourceTemplate": "pypi",
+      "versioningTemplate": "pep440"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "python"
+      ],
+      "groupName": "Python Alpine"
+    },
+    {
+      "matchDatasources": [
+        "pypi"
+      ],
+      "matchPackageNames": [
+        "internetarchive"
+      ],
+      "groupName": "internetarchive"
+    }
+  ]
+}

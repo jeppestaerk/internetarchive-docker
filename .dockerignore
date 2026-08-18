@@ -1,0 +1,10 @@
+.git
+.github
+.gitignore
+.env
+.env.example
+downloads/
+docker-compose.yaml
+renovate.json
+*.md
+.DS_Store

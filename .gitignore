@@ -1,0 +1,17 @@
+# Docker
+*.log
+.env
+
+# Download target created by docker-compose
+downloads/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

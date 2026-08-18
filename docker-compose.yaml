@@ -1,0 +1,26 @@
+# The `ia` CLI is a one-shot tool, not a daemon. Use `run`, not `up`:
+#
+#   docker compose run --rm ia configure
+#   docker compose run --rm ia download nasa --glob='*.jpg'
+#   docker compose run --rm ia metadata nasa
+services:
+  ia:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/jeppestaerk/internetarchive:latest
+    environment:
+      - TZ=${TZ:-Europe/Copenhagen}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Unset resolves to an empty string, which the library treats as absent
+      # and falls through to /config/ia.ini.
+      - IA_ACCESS_KEY_ID=${IA_ACCESS_KEY_ID:-}
+      - IA_SECRET_ACCESS_KEY=${IA_SECRET_ACCESS_KEY:-}
+    volumes:
+      - ./downloads:/data
+      - ia-config:/config
+
+volumes:
+  ia-config:
+    driver: local
