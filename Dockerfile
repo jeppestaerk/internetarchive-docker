@@ -10,7 +10,7 @@ FROM ${BASE_IMAGE}:${BASE_VERSION}@${BASE_DIGEST}
 ARG BASE_VERSION
 ARG BASE_DIGEST
 
-ARG IA_VERSION=5.12.0
+ARG IA_VERSION=5.12.1
 
 # su-exec drops privileges in the entrypoint; tzdata makes TZ meaningful
 RUN apk add --no-cache \
