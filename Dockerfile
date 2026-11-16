@@ -1,6 +1,6 @@
 ARG BASE_IMAGE=python
 ARG BASE_VERSION=3.15.2-alpine3.24
-ARG BASE_DIGEST=sha256:a0f2e268f2ce8f3709611a90054ec6a8ae31f6251f5896b8648b9bb99835e30a
+ARG BASE_DIGEST=sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
 
 # Pinned by digest as well as tag, so a rebuild cannot silently pick up a
 # different base image. Renovate keeps the pair in sync.
